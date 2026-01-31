@@ -53,3 +53,19 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# System Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# PlatformIO
+.pio/
+.build/
+.vscode/
+.idea/
+.ccls-cache/
+
+# Ignore secret files
+include/secrets.h
