@@ -4,6 +4,7 @@
 #include <Wire.h>             // For I2C communication
 #include <Adafruit_GFX.h>     // Core graphics library
 #include <Adafruit_SSD1306.h> // OLED driver
+#include <ArduinoJson.h>
 
 // Define display dimensions (common for 0.96")
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -21,10 +22,18 @@ bool isConnected = false;
 
 // Port for server digest
 int digestPort = 9999;
+char digestServerType[64] = "TelemetryBridge";
 
 // Buffer for incoming UDP packets
 char incomingPacket[1024];
+
+// Flag to indicate if a valid digest has been received
 bool isDigestReceived = false;
+
+// Variables to store server information from digest
+char serverType[64];
+char serverIP[16];
+int serverPort;
 
 // connect to WiFi network
 void connectToWiFi()
@@ -87,6 +96,29 @@ void setup()
   delay(200);
 }
 
+bool parseDigest(const char *packet)
+{
+  JsonDocument digest;
+
+  DeserializationError error = deserializeJson(digest, packet);
+  if (error)
+    return false;
+
+  Serial.println(F("Response:"));
+  Serial.println(digest["type"].as<const char *>());
+  Serial.println(digest["ip"].as<const char *>());
+  Serial.println(digest["port"].as<const int>());
+
+  strncpy(serverType, digest["type"].as<const char *>(), sizeof(serverType) - 1);
+  strncpy(serverIP, digest["ip"].as<const char *>(), sizeof(serverIP) - 1);
+  serverPort = digest["port"].as<const int>();
+
+  if (strcmp(serverType, digestServerType) != 0)
+    return false;
+
+  return true;
+}
+
 // Receive UDP packets containing server digest
 void receiveDigestPackets()
 {
@@ -113,7 +145,7 @@ void receiveDigestPackets()
     {
       incomingPacket[len] = '\0';
       Serial.printf("Received UDP packet: %s\n", incomingPacket);
-      isDigestReceived = true;
+      isDigestReceived = parseDigest(incomingPacket);
     }
   }
 }
