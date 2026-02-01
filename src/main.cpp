@@ -35,6 +35,8 @@ char serverType[64];
 char serverIP[16];
 int serverPort;
 
+bool isDeviceRegistered = false;
+
 // connect to WiFi network
 void connectToWiFi()
 {
@@ -96,6 +98,7 @@ void setup()
   delay(200);
 }
 
+// Parse the received UDP packet as JSON digest
 bool parseDigest(const char *packet)
 {
   JsonDocument digest;
@@ -122,6 +125,9 @@ bool parseDigest(const char *packet)
 // Receive UDP packets containing server digest
 void receiveDigestPackets()
 {
+  if (!isConnected || isDigestReceived)
+    return;
+
   static bool udpInitialized = false;
   if (!udpInitialized)
   {
@@ -150,18 +156,65 @@ void receiveDigestPackets()
   }
 }
 
+// Register device with the server via HTTP POST
+void registerDevice()
+{
+  if (!isDigestReceived || isDeviceRegistered)
+    return;
+
+  WiFiClient client;
+  String url = "/register";
+  String host = String(serverIP);
+  int port = serverPort;
+
+  // Prepare JSON payload
+  JsonDocument json;
+  json["mac"] = WiFi.macAddress();
+  json["timestamp"] = millis();
+
+  String payload;
+  serializeJson(json, payload);
+
+  // Build HTTP POST request
+  String request =
+      "POST " + url + " HTTP/1.1\r\n" +
+      "Host: " + host + "\r\n" +
+      "Content-Type: application/json\r\n" +
+      "Content-Length: " + String(payload.length()) + "\r\n" +
+      "Connection: close\r\n\r\n" +
+      payload;
+
+  if (client.connect(host.c_str(), port))
+  {
+    client.print(request);
+
+    unsigned long timeout = millis();
+    while (client.connected() && millis() - timeout < 3000)
+    {
+      if (client.available())
+      {
+        String line = client.readStringUntil('\n');
+        Serial.println(line);
+        if (line.startsWith("HTTP/1.1 200"))
+        {
+          isDeviceRegistered = true;
+          break;
+        }
+      }
+    }
+    client.stop();
+  }
+}
+
 void loop()
 {
   connectToWiFi();
-
-  if (!isDigestReceived)
-  {
-    receiveDigestPackets();
-  }
+  receiveDigestPackets();
+  registerDevice();
 
   display.clearDisplay();
 
-  if (isDigestReceived)
+  if (isDeviceRegistered)
   {
     display.setTextSize(2); // Draw 2X-scale text
     display.setCursor(0, 0);
