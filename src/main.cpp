@@ -1,6 +1,6 @@
 #include "secrets.h"          // WIFI_SSID and WIFI_PASSWORD
+#include "digest.h"           // For digest parsing and server info
 #include <WiFi.h>             // For WiFi connectivity
-#include <WiFiUdp.h>          // For UDP communication
 #include <Wire.h>             // For I2C communication
 #include <Adafruit_GFX.h>     // Core graphics library
 #include <Adafruit_SSD1306.h> // OLED driver
@@ -15,25 +15,9 @@
 #define SCREEN_ADDRESS 0x3C // Check your display if this doesn't work
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-WiFiUDP udp;
 
 // WiFi connection status
 bool isConnected = false;
-
-// Port for server digest
-int digestPort = 9999;
-char digestServerType[64] = "TelemetryBridge";
-
-// Buffer for incoming UDP packets
-char incomingPacket[1024];
-
-// Flag to indicate if a valid digest has been received
-bool isDigestReceived = false;
-
-// Variables to store server information from digest
-char serverType[64];
-char serverIP[16];
-int serverPort;
 
 bool isDeviceRegistered = false;
 
@@ -98,119 +82,14 @@ void setup()
   delay(200);
 }
 
-// Parse the received UDP packet as JSON digest
-bool parseDigest(const char *packet)
-{
-  JsonDocument digest;
-
-  DeserializationError error = deserializeJson(digest, packet);
-  if (error)
-    return false;
-
-  Serial.println(F("Response:"));
-  Serial.println(digest["type"].as<const char *>());
-  Serial.println(digest["ip"].as<const char *>());
-  Serial.println(digest["port"].as<const int>());
-
-  strncpy(serverType, digest["type"].as<const char *>(), sizeof(serverType) - 1);
-  strncpy(serverIP, digest["ip"].as<const char *>(), sizeof(serverIP) - 1);
-  serverPort = digest["port"].as<const int>();
-
-  if (strcmp(serverType, digestServerType) != 0)
-    return false;
-
-  return true;
-}
-
-// Receive UDP packets containing server digest
-void receiveDigestPackets()
-{
-  if (!isConnected || isDigestReceived)
-    return;
-
-  static bool udpInitialized = false;
-  if (!udpInitialized)
-  {
-    if (udp.begin(digestPort))
-    {
-      Serial.printf("UDP listening on port %d\n", digestPort);
-      udpInitialized = true;
-    }
-    else
-    {
-      Serial.println("Failed to start UDP");
-      return;
-    }
-  }
-
-  int packetSize = udp.parsePacket();
-  if (packetSize)
-  {
-    int len = udp.read(incomingPacket, sizeof(incomingPacket) - 1);
-    if (len > 0)
-    {
-      incomingPacket[len] = '\0';
-      Serial.printf("Received UDP packet: %s\n", incomingPacket);
-      isDigestReceived = parseDigest(incomingPacket);
-    }
-  }
-}
-
-// Register device with the server via HTTP POST
-void registerDevice()
-{
-  if (!isDigestReceived || isDeviceRegistered)
-    return;
-
-  WiFiClient client;
-  String url = "/register";
-  String host = String(serverIP);
-  int port = serverPort;
-
-  // Prepare JSON payload
-  JsonDocument json;
-  json["mac"] = WiFi.macAddress();
-  json["timestamp"] = millis();
-
-  String payload;
-  serializeJson(json, payload);
-
-  // Build HTTP POST request
-  String request =
-      "POST " + url + " HTTP/1.1\r\n" +
-      "Host: " + host + "\r\n" +
-      "Content-Type: application/json\r\n" +
-      "Content-Length: " + String(payload.length()) + "\r\n" +
-      "Connection: close\r\n\r\n" +
-      payload;
-
-  if (client.connect(host.c_str(), port))
-  {
-    client.print(request);
-
-    unsigned long timeout = millis();
-    while (client.connected() && millis() - timeout < 3000)
-    {
-      if (client.available())
-      {
-        String line = client.readStringUntil('\n');
-        Serial.println(line);
-        if (line.startsWith("HTTP/1.1 200"))
-        {
-          isDeviceRegistered = true;
-          break;
-        }
-      }
-    }
-    client.stop();
-  }
-}
+float temperature = 0.1;
+float humidity = 0.2;
 
 void loop()
 {
   connectToWiFi();
-  receiveDigestPackets();
-  registerDevice();
+  receiveDigestPackets(isConnected);
+  registerDevice(&isDeviceRegistered);
 
   display.clearDisplay();
 
@@ -219,6 +98,22 @@ void loop()
     display.setTextSize(2); // Draw 2X-scale text
     display.setCursor(0, 0);
     display.println("CONNECTED");
+
+    // Send data to the server
+    // Prepare JSON payload
+    JsonDocument json;
+    json["mac"] = WiFi.macAddress();
+    json["temperature_c"] = temperature;
+    json["humidity_percent"] = humidity;
+    json["timestamp"] = millis();
+
+    String payload;
+    serializeJson(json, payload);
+
+    sendData(&payload);
+
+    temperature += 0.11;
+    humidity += 0.12;
   }
 
   display.setTextSize(1); // Normal 1:1 pixel scale
