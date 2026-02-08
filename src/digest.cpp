@@ -1,4 +1,4 @@
-#include "digest.h"
+#include "network.h"
 
 WiFiUDP udp;
 
@@ -44,7 +44,13 @@ bool parseDigest(const char *packet)
 // Receive UDP packets containing server digest
 void receiveDigestPackets(bool isConnected)
 {
-    if (!isConnected || isDigestReceived)
+    if (!isConnected)
+    {
+        isDigestReceived = false; // Reset flag if not connected
+        return;
+    }
+
+    if (isDigestReceived)
         return;
 
     static bool udpInitialized = false;
@@ -78,7 +84,16 @@ void receiveDigestPackets(bool isConnected)
 // Register device with the server via HTTP POST
 void registerDevice(bool *isDeviceRegistered)
 {
-    if (!isDigestReceived || (isDeviceRegistered && *isDeviceRegistered))
+    if (!isDeviceRegistered)
+        return;
+
+    if (!isDigestReceived)
+    {
+        *isDeviceRegistered = false; // Ensure device is marked as unregistered
+        return;
+    }
+
+    if (*isDeviceRegistered)
         return;
 
     WiFiClient client;
@@ -88,8 +103,71 @@ void registerDevice(bool *isDeviceRegistered)
 
     // Prepare JSON payload
     JsonDocument json;
-    json["mac"] = WiFi.macAddress();
-    json["timestamp"] = millis();
+
+    // Device Info
+    JsonObject device_info = json["device_info"].to<JsonObject>();
+    device_info["vendor"] = "dredfort42";
+    device_info["model"] = "iot-ctrl-v0";
+    device_info["farmvare"] = "1.2.3";
+    device_info["ip"] = WiFi.localIP().toString();
+    device_info["port"] = "";
+    device_info["mac"] = WiFi.macAddress();
+
+    // Capabilities
+    JsonObject capabilities = json["capabilities"].to<JsonObject>();
+
+    // Sensors
+    JsonArray sensors = capabilities["sensors"].to<JsonArray>();
+
+    JsonObject temp_sensor = sensors.add<JsonObject>();
+    temp_sensor["id"] = "temp_1";
+    temp_sensor["type"] = "temperature";
+    temp_sensor["unit"] = "celsius";
+    JsonArray temp_range = temp_sensor["range"].to<JsonArray>();
+    temp_range.add(-40);
+    temp_range.add(125);
+    temp_sensor["read_only"] = true;
+    JsonArray temp_modes = temp_sensor["sampling_modes"].to<JsonArray>();
+    temp_modes.add("push");
+    // temp_modes.add("pull");
+
+    JsonObject hum_sensor = sensors.add<JsonObject>();
+    hum_sensor["id"] = "hum_1";
+    hum_sensor["type"] = "humidity";
+    hum_sensor["unit"] = "percent";
+    JsonArray hum_range = hum_sensor["range"].to<JsonArray>();
+    hum_range.add(0);
+    hum_range.add(100);
+    hum_sensor["read_only"] = true;
+    JsonArray hum_modes = hum_sensor["sampling_modes"].to<JsonArray>();
+    hum_modes.add("push");
+    // hum_modes.add("pull");
+
+    // // Actuators
+    // JsonArray actuators = capabilities["actuators"].to<JsonArray>();
+
+    // JsonObject relay = actuators.add<JsonObject>();
+    // relay["id"] = "relay_1";
+    // relay["type"] = "relay";
+    // JsonArray relay_commands = relay["commands"].to<JsonArray>();
+    // relay_commands.add("on");
+    // relay_commands.add("off");
+    // JsonArray relay_state = relay["state"].to<JsonArray>();
+    // relay_state.add("on");
+    // relay_state.add("off");
+
+    // JsonObject motor = actuators.add<JsonObject>();
+    // motor["id"] = "motor_1";
+    // motor["type"] = "motor";
+    // JsonArray motor_commands = motor["commands"].to<JsonArray>();
+    // motor_commands.add("start");
+    // motor_commands.add("stop");
+    // motor_commands.add("set_speed");
+    // JsonObject motor_params = motor["params"].to<JsonObject>();
+    // JsonObject speed_param = motor_params["speed"].to<JsonObject>();
+    // speed_param["min"] = 0;
+    // speed_param["max"] = 3000;
+    // speed_param["unit"] = "rpm";
 
     String payload;
     serializeJson(json, payload);
@@ -103,29 +181,43 @@ void registerDevice(bool *isDeviceRegistered)
         "Connection: close\r\n\r\n" +
         payload;
 
-    if (client.connect(host.c_str(), port))
+    int retries = 3;
+    while (retries > 0)
     {
-        client.print(request);
-
-        unsigned long timeout = millis();
-        while (client.connected() && millis() - timeout < 3000)
+        if (client.connect(host.c_str(), port))
         {
-            if (client.available())
+            client.print(request);
+
+            unsigned long timeout = millis();
+            bool success = false;
+            while (client.connected() && millis() - timeout < 5000)
             {
-                String line = client.readStringUntil('\n');
-                Serial.println(line);
-                if (line.startsWith("HTTP/1.1 200"))
+                if (client.available())
                 {
-                    *isDeviceRegistered = true;
-                    break;
+                    String line = client.readStringUntil('\n');
+                    Serial.println(line);
+                    if (line.startsWith("HTTP/1.1 200"))
+                    {
+                        *isDeviceRegistered = true;
+                        success = true;
+                        break;
+                    }
                 }
             }
+            client.stop();
+            if (success)
+                return;
         }
-        client.stop();
+        else
+        {
+            Serial.printf("Connection failed to %s:%d, retries left: %d\n", host.c_str(), port, retries - 1);
+        }
+        retries--;
+        delay(1000); // Wait before retrying
     }
 }
 
-void sendData(String *payload)
+void sendData(String *payload, bool *isDeviceRegistered)
 {
     WiFiClient client;
     String url = "/data";
@@ -146,16 +238,25 @@ void sendData(String *payload)
         client.print(request);
 
         unsigned long timeout = millis();
-        while (client.connected() && millis() - timeout < 3000)
+        bool success = false;
+        while (client.connected() && millis() - timeout < 5000)
         {
             if (client.available())
             {
                 String line = client.readStringUntil('\n');
                 Serial.println(line);
                 if (line.startsWith("HTTP/1.1 200"))
+                {
+                    success = true;
                     break;
+                }
             }
         }
         client.stop();
+        if (success)
+            return;
     }
+
+    Serial.printf("Send data failed to %s:%d\n", host.c_str(), port);
+    isDigestReceived = false; // Mark digest as invalid to trigger re-registration
 }

@@ -1,6 +1,4 @@
-#include "secrets.h"          // WIFI_SSID and WIFI_PASSWORD
-#include "digest.h"           // For digest parsing and server info
-#include <WiFi.h>             // For WiFi connectivity
+#include "network.h"          // For WiFi connectivity and digest handling
 #include <Wire.h>             // For I2C communication
 #include <Adafruit_GFX.h>     // Core graphics library
 #include <Adafruit_SSD1306.h> // OLED driver
@@ -17,32 +15,10 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // WiFi connection status
-bool isConnected = false;
+bool isWiFiConnected = false;
 
+// Device registration status
 bool isDeviceRegistered = false;
-
-// connect to WiFi network
-void connectToWiFi()
-{
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-    Serial.print(".");
-    delay(200);
-    isConnected = false;
-  }
-
-  if (WiFi.status() == WL_CONNECTED && !isConnected)
-  {
-    digitalWrite(LED_BUILTIN, HIGH);
-    Serial.println();
-    Serial.println("WiFi connected.");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    // WiFi.printDiag(Serial);
-    isConnected = true;
-  }
-}
 
 void setup()
 {
@@ -77,6 +53,24 @@ void setup()
   Serial.printf("\nConnecting to WiFi...");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
+  // Configure time with NTP
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  delay(200);
+
+  Serial.println("Waiting for NTP time sync: ");
+  time_t now = time(nullptr);
+  int attempts = 0;
+  while (now < 24 * 3600 && attempts < 20)
+  {
+    delay(500);
+    now = time(nullptr);
+    attempts++;
+  }
+  struct tm timeinfo = *localtime(&now);
+  Serial.print("Current time: ");
+  Serial.println(asctime(&timeinfo));
+
   // Clear the buffer.
   display.clearDisplay();
   delay(200);
@@ -87,8 +81,8 @@ float humidity = 0.2;
 
 void loop()
 {
-  connectToWiFi();
-  receiveDigestPackets(isConnected);
+  connectToWiFi(&isWiFiConnected);
+  receiveDigestPackets(isWiFiConnected);
   registerDevice(&isDeviceRegistered);
 
   display.clearDisplay();
@@ -105,12 +99,12 @@ void loop()
     json["mac"] = WiFi.macAddress();
     json["temperature_c"] = temperature;
     json["humidity_percent"] = humidity;
-    json["timestamp"] = millis();
+    json["timestamp"] = time(nullptr); // Send timestamp in milliseconds
 
     String payload;
     serializeJson(json, payload);
 
-    sendData(&payload);
+    sendData(&payload, &isDeviceRegistered);
 
     temperature += 0.11;
     humidity += 0.12;
@@ -140,7 +134,7 @@ void loop()
 
   display.display();
 
-  if (isConnected)
+  if (isWiFiConnected)
   {
     // Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
 
