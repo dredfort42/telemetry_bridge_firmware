@@ -129,7 +129,7 @@ void registerDevice(bool *isDeviceRegistered)
     temp_sensor["read_only"] = true;
     JsonArray temp_modes = temp_sensor["sampling_modes"].to<JsonArray>();
     temp_modes.add("push");
-    // temp_modes.add("pull");
+    temp_modes.add("pull");
 
     JsonObject hum_sensor = sensors.add<JsonObject>();
     hum_sensor["id"] = "hum_1";
@@ -141,20 +141,20 @@ void registerDevice(bool *isDeviceRegistered)
     hum_sensor["read_only"] = true;
     JsonArray hum_modes = hum_sensor["sampling_modes"].to<JsonArray>();
     hum_modes.add("push");
-    // hum_modes.add("pull");
+    hum_modes.add("pull");
 
-    // // Actuators
-    // JsonArray actuators = capabilities["actuators"].to<JsonArray>();
+    // Actuators
+    JsonArray actuators = capabilities["actuators"].to<JsonArray>();
 
-    // JsonObject relay = actuators.add<JsonObject>();
-    // relay["id"] = "relay_1";
-    // relay["type"] = "relay";
-    // JsonArray relay_commands = relay["commands"].to<JsonArray>();
-    // relay_commands.add("on");
-    // relay_commands.add("off");
-    // JsonArray relay_state = relay["state"].to<JsonArray>();
-    // relay_state.add("on");
-    // relay_state.add("off");
+    JsonObject relay = actuators.add<JsonObject>();
+    relay["id"] = "relay_1";
+    relay["type"] = "relay";
+    JsonArray relay_commands = relay["commands"].to<JsonArray>();
+    relay_commands.add("on");
+    relay_commands.add("off");
+    JsonArray relay_state = relay["state"].to<JsonArray>();
+    relay_state.add("on");
+    relay_state.add("off");
 
     // JsonObject motor = actuators.add<JsonObject>();
     // motor["id"] = "motor_1";
