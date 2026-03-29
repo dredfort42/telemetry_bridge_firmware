@@ -96,6 +96,8 @@ void registerDevice(bool *isDeviceRegistered)
     if (*isDeviceRegistered)
         return;
 
+    Serial.printf("Attempting to register device...\n");
+
     WiFiClient client;
     String url = "/register";
     String host = String(serverIP);
@@ -108,7 +110,7 @@ void registerDevice(bool *isDeviceRegistered)
     JsonObject device_info = json["device_info"].to<JsonObject>();
     device_info["vendor"] = "dredfort42";
     device_info["model"] = "iot-ctrl-v0";
-    device_info["farmvare"] = "1.2.3";
+    device_info["firmware"] = "1.2.3";
     device_info["ip"] = WiFi.localIP().toString();
     device_info["port"] = "";
     device_info["mac"] = WiFi.macAddress();

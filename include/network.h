@@ -9,7 +9,7 @@
 #include "secrets.h" // WIFI_SSID and WIFI_PASSWORD
 
 #define DIGEST_PORT 9999
-#define DIGEST_SERVER_TYPE "TelemetryBridge"
+#define DIGEST_SERVER_TYPE "SENSOTECH.net Telemetry Bridge"
 
 void connectToWiFi(bool *isWiFiConnected);
 
