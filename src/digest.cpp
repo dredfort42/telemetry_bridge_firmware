@@ -145,18 +145,18 @@ void registerDevice(bool *isDeviceRegistered)
     hum_modes.add("push");
     hum_modes.add("pull");
 
-    // Actuators
-    JsonArray actuators = capabilities["actuators"].to<JsonArray>();
+    // // Actuators
+    // JsonArray actuators = capabilities["actuators"].to<JsonArray>();
 
-    JsonObject relay = actuators.add<JsonObject>();
-    relay["id"] = "relay_1";
-    relay["type"] = "relay";
-    JsonArray relay_commands = relay["commands"].to<JsonArray>();
-    relay_commands.add("on");
-    relay_commands.add("off");
-    JsonArray relay_state = relay["state"].to<JsonArray>();
-    relay_state.add("on");
-    relay_state.add("off");
+    // JsonObject relay = actuators.add<JsonObject>();
+    // relay["id"] = "relay_1";
+    // relay["type"] = "relay";
+    // JsonArray relay_commands = relay["commands"].to<JsonArray>();
+    // relay_commands.add("on");
+    // relay_commands.add("off");
+    // JsonArray relay_state = relay["state"].to<JsonArray>();
+    // relay_state.add("on");
+    // relay_state.add("off");
 
     // JsonObject motor = actuators.add<JsonObject>();
     // motor["id"] = "motor_1";
@@ -202,6 +202,7 @@ void registerDevice(bool *isDeviceRegistered)
                     {
                         *isDeviceRegistered = true;
                         success = true;
+                        Serial.printf("Device registered successfully!\n");
                         break;
                     }
                 }
